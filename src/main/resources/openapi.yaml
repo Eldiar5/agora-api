@@ -1,0 +1,552 @@
+openapi: 3.0.1
+info:
+  title: MyTwitter API
+  description: Руководство по REST API для MyTwitter.
+  version: 1.0.0
+
+servers:
+  - url: / # Путь, по которому работает твой API
+
+paths:
+  # RegisterCommandServlet
+  /api/register:
+    post:
+      tags:
+        - "User"
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequestDto'
+      responses:
+        '201':
+          description: Регистрация прошла успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponseDto'
+        '400':
+          description: Ошибка валидации (некорректный Json объект)
+        '500':
+          description: Ошибка на стороне сервера
+
+  # LoginCommandServlet
+  /api/login:
+    post:
+      tags:
+        - "User"
+      summary: Аутентификация пользователя
+      description: Отправь логин и пароль, чтобы получить JWT-токен.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequestDto'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponseDto'
+        '400':
+          description: Неверный логин или пароль
+        '500':
+          description: Ошибка на стороне сервера
+
+  # InfoCommandServlet
+  /api/info:
+    get:
+      summary: Вывод информации текущего пользователя
+      description: Выводит информацию текущего пользователя. Требует JWT-токен в заголовке Authorization.
+      tags:
+        - "User"
+        - "Info"
+      security:
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Вывод информации пользователя прошел успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponseDto'
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Не авторизован
+        '500':
+          description: Ошибка на стороне сервера
+
+  # InfoAllCommandServlet
+  /api/info-all:
+    get:
+      summary: Вывод информации о всех пользователях системы
+      description: Выводит информацию всех пользователей. Требует JWT-токен в заголовке Authorization.
+      tags:
+        - "User"
+        - "Info"
+      security:
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Вывод информации о всех пользователях прошел успешно
+          content:
+            application/json:
+              schema:
+                type: array # 1. Указываем, что ответ - это массив
+                items:
+                  $ref: '#/components/schemas/InfoResponseDto'
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Не авторизован
+        '500':
+          description: Ошибка на стороне сервера
+
+  # InfoByLoginCommandServlet
+  /api/info-by-login:
+    get:
+      summary: Вывод информации о пользователе по логину
+      description: Выводит информацию о конкретном пользователе по его логину. Требует JWT-токен.
+      tags:
+        - "User"
+        - "Info"
+      security:
+        - bearerAuth: [ ]
+
+      parameters:
+        - name: login         # Имя параметра в URL (?login=...)
+          in: query           # Где он находится (в строке запроса)
+          required: true      # Обязателен ли он
+          description: Логин пользователя, которого нужно найти.
+          schema:
+            type: string      # Тип данных
+            example: "test_user" # Пример
+
+      responses:
+        '200':
+          description: Информация о пользователе успешно найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponseDto'
+        '400':
+          description: Ошибка валидации (например, логин не указан)
+        '401':
+          description: Не авторизован
+        '404':
+          description: Пользователь с таким логином не найден
+        '500':
+          description: Ошибка на стороне сервера
+
+  # InfoAllByUserTypeCommandServlet
+  /api/info-all-by-user-type:
+    get:
+      summary: Фильтр пользователей по типу
+      description: Выводит список всех пользователей, отфильтрованных по типу (PERSON или ORGANIZATION).
+      tags:
+        - "User"
+        - "Info"
+      security:
+        - bearerAuth: [ ]
+
+      parameters:
+        - name: type
+          in: query
+          required: true
+          description: Тип пользователей для фильтрации.
+          schema:
+            type: string
+            enum: [ "PERSON", "ORGANIZATION" ] # Показываем допустимые значения
+            example: "PERSON"
+
+      responses:
+        '200':
+          description: Список пользователей по заданному типу
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InfoResponseDto'
+        '400':
+          description: Ошибка валидации (например, тип не указан или некорректен)
+        '401':
+          description: Не авторизован
+        '500':
+          description: Ошибка на стороне сервера
+
+    # --- Эндпоинты для постов ---
+
+  # AddPostCommandServlet
+  /api/add-post:
+    post:
+      tags:
+        - "Post"
+      summary: Добавление нового поста
+      description: Создает новый пост. Требует JWT-токен в заголовке Authorization.
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostRequestDto'
+      responses:
+        '201':
+          description: Пост успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка валидации (пустой текст и т.д.)
+        '401':
+          description: Не авторизован
+        '500':
+          description: Ошибка на стороне сервера
+
+    # AllPostsCommandServlet
+  /api/all-posts:
+    get:
+      tags:
+        - "Post"
+        - "Info"
+      summary: Получить все посты
+      description: Возвращает список всех постов от всех пользователей.
+      responses:
+        '200':
+          description: Список всех постов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка на стороне сервера (например, посты не найдены)
+        '500':
+          description: Внутренняя ошибка сервера
+
+    # MyPostsCommandServlet
+  /api/my-posts:
+    get:
+      tags:
+        - "Post"
+        - "Info"
+      summary: Получить мои посты
+      description: Возвращает список постов, принадлежащих аутентифицированному пользователю (требуется JWT-токен).
+      security:
+        - bearerAuth: [ ] # Этот эндпоинт защищен
+      responses:
+        '200':
+          description: Список постов пользователя
+          content:
+             application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка (например, не удалось найти автора)
+        '401':
+          description: Ошибка аутентификации (токен не предоставлен или невалиден)
+        '500':
+          description: Внутренняя ошибка сервера
+
+    # PostsByLoginCommandServlet
+  /api/posts-by-login:
+    get:
+      tags:
+        - "Post"
+        - "Info"
+      summary: Получить посты по логину
+      description: Возвращает список постов конкретного пользователя по его логину.
+      parameters:
+        - in: query
+          name: login
+          required: true
+          description: Логин пользователя, чьи посты нужно найти
+          schema:
+            type: string
+            example: "eldiar"
+      responses:
+        '200':
+          description: Список постов пользователя
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка (например, логин не указан или пользователь не найден)
+        '500':
+          description: Внутренняя ошибка сервера
+
+    # PostsByTagCommandServlet
+  /api/posts-by-tag:
+    get:
+      tags:
+        - "Post"
+        - "Info"
+      summary: Получить посты по тегу
+      description: Возвращает список постов, содержащих указанный тег.
+      parameters:
+        - in: query
+          name: tag
+          required: true
+          description: Тег для поиска постов
+          schema:
+            type: string
+            example: "java"
+      responses:
+        '200':
+          description: Список постов по тегу
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка (например, тег не указан или посты не найдены)
+        '500':
+          description: Внутренняя ошибка сервера
+
+    # PostsByUserTypeCommandServlet
+  /api/posts-by-user-type:
+    get:
+      tags:
+        - "Post"
+        - "Info"
+      summary: Получить посты по типу пользователя
+      description: Возвращает список постов, отфильтрованных по типу пользователя (PERSON или ORGANIZATION).
+      parameters:
+        - in: query
+          name: userType
+          required: true
+          description: Тип пользователя для фильтрации
+          schema:
+            type: string
+            enum: [ PERSON, ORGANIZATION ]
+            example: "PERSON"
+      responses:
+        '200':
+          description: Список постов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Ошибка (например, указан некорректный тип пользователя)
+        '500':
+          description: Внутренняя ошибка сервера
+
+    # DeletePostCommandServlet
+  /api/delete-post:
+    delete:
+      tags:
+        - "Post"
+      summary: Удалить пост
+      description: Удаляет пост по его ID. Удалить можно только свой собственный пост (требуется JWT-токен).
+      security:
+        - bearerAuth: [ ] # Этот эндпоинт защищен
+      parameters:
+        - in: query
+          name: postId
+          required: true
+          description: ID поста, который нужно удалить
+          schema:
+            type: integer
+            format: int64
+            example: 101
+      responses:
+        '204':
+          description: Пост успешно удален (Нет содержимого)
+        '400':
+          description: Ошибка (например, ID поста не указан или пост не найден)
+        '401':
+          description: Ошибка аутентификации (токен не предоставлен или невалиден)
+        '403':
+          description: Доступ запрещен (попытка удалить чужой пост)
+        '500':
+          description: Внутренняя ошибка сервера
+
+components:
+  schemas:
+    # Описываем DTO, которые ты используешь
+    LoginRequestDto:
+      type: object
+      properties:
+        login:
+          type: string
+          example: "eldiar"
+        password:
+          type: string
+          example: "12345"
+
+    LoginResponseDto:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+
+    PostRequestDto:
+      type: object
+      properties:
+        topic:
+          type: string
+          example: "Моя первая тема"
+        text:
+          type: string
+          example: "Текст моего первого поста!"
+        tags:
+          type: array
+          items:
+            type: string
+          example: [ "java", "jetty" ]
+
+    PostResponseDto:
+      type: object
+      properties:
+        postId:
+          type: integer
+          example: 101
+        authorLogin:
+          type: string
+          example: "eldiar"
+        topic:
+          type: string
+        text:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+          example: [ "java", "jetty", "api" ]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-10-26T14:30:00"
+
+    RegistrationRequestDto: #
+      type: object
+      description: DTO для регистрации пользователя (Person или Organization)
+      properties:
+        userType:
+          type: integer
+          description: "0 для Person, 1 для Organization"
+          example: 1
+        login:
+          type: string
+          example: "new_user"
+        password:
+          type: string
+          example: "Str0ngP@ssw0rd"
+        name:
+          type: string
+          description: "Используется, если userType=0 (Person)"
+          example: "Иван"
+        lastName:
+          type: string
+          description: "Используется, если userType=0 (Person)"
+          example: "Иванов"
+        birthDate:
+          type: string
+          format: date
+          description: "Используется, если userType=0 (Person)"
+          example: "2000-01-30"
+        title:
+          type: string
+          description: "Используется, если userType=1 (Organization)"
+          example: "MegaCorp"
+        specialization:
+          type: string
+          description: "Используется, если userType=1 (Organization)"
+          example: "IT"
+        dateOfFoundation:
+          type: string
+          format: date
+          description: "Используется, если userType=1 (Organization)"
+          example: "2020-05-15"
+
+    RegistrationResponseDto: #
+      type: object
+      description: Ответ после успешной регистрации. Содержит поля или для Person, или для Organization.
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12
+        login:
+          type: string
+          example: "new_user"
+        name:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        birthDate:
+          type: string
+          format: date
+          example: "2000-01-30"
+        title:
+          type: string
+          example: "MegaCorp"
+        specialization:
+          type: string
+          example: "IT"
+        dateOfFoundation:
+          type: string
+          format: date
+          example: "2020-05-15"
+
+    InfoResponseDto: #
+      type: object
+      description: Информация о пользователе (Person или Organization).
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 12
+        login:
+          type: string
+          example: "existing_user"
+        name:
+          type: string
+          example: "Иван"
+        lastName:
+          type: string
+          example: "Иванов"
+        birthDate:
+          type: string
+          format: date
+          example: "2000-01-30"
+        title:
+          type: string
+          example: "MegaCorp"
+        specialization:
+          type: string
+          example: "IT"
+        dateOfFoundation:
+          type: string
+          format: date
+          example: "2020-05-15"
+
+
+  securitySchemes:
+    # Описываем, как работает твоя JWT-безопасность
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

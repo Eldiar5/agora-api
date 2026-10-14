@@ -1,0 +1,21 @@
+<configuration>
+
+    <conversionRule conversionWord="clr" class="agora.sideComponents.customLogbackSetting.CustomCompositeConverter" />
+
+    <!-- Этот аппендер выводит логи в консоль -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!-- Формат вывода логов: время, поток, уровень, логгер, сообщение -->
+            <pattern>
+                %d{HH:mm:ss.SSS} [%thread] %clr(%-5level) %logger{36} - %clr(%msg%n)
+            </pattern>
+        </encoder>
+    </appender>
+
+    <!-- Корневой логгер. Устанавливаем уровень INFO -->
+    <!-- Это значит, что сообщения DEBUG и TRACE не будут выводиться -->
+    <root level="info">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+</configuration>
