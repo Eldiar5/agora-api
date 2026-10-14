@@ -47,3 +47,6 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Claude Code project notes (local only)
+CLAUDE.md
