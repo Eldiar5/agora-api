@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +24,6 @@ import agora.entity.user.UserType;
 import agora.exceptions.AgoraIllegalArgumentException;
 import agora.exceptions.UserNotFoundException;
 import agora.mapper.v2.HttpUserMapper;
-import agora.security.JwtHandler;
 import agora.service.UserService;
 
 import java.util.List;
@@ -42,13 +42,11 @@ public class InfoController {
 
     private final UserService userService;
     private final HttpUserMapper userMapper;
-    private final JwtHandler jwtHandler;
 
     @Autowired
-    public InfoController(UserService userService, HttpUserMapper userMapper, JwtHandler jwtHandler) {
+    public InfoController(UserService userService, HttpUserMapper userMapper) {
         this.userService = userService;
         this.userMapper = userMapper;
-        this.jwtHandler = jwtHandler;
     }
 
     @GetMapping("/my")
@@ -60,25 +58,9 @@ public class InfoController {
                     schema = @Schema(implementation = InfoResponseDto.class))
     )
     public InfoResponseDto info(
-            @RequestHeader(name = "Authorization") String token
+            @AuthenticationPrincipal User user
     ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String login = jwtHandler.getUsernameFromToken(authorization);
-
-        if (Objects.isNull(login) || login.isBlank()) {
-            throw new AgoraIllegalArgumentException("Некорректное имя");
-        }
-
-        User user = userService.getUserByLogin(login);
-
-        if (Objects.isNull(user)) {
-            throw new UserNotFoundException("Не удалось найти пользователя с логином: " + login);
-        }
-
         return userMapper.mapUserToResponseDto(user);
-
     }
 
     @GetMapping("/by-login")
@@ -90,12 +72,8 @@ public class InfoController {
                     schema = @Schema(implementation = InfoResponseDto.class))
     )
     public InfoResponseDto infoByLogin (
-            @RequestHeader(name = "Authorization") String token,
             @RequestParam(name = "login") @NotBlank(message = "Логин не может быть пустым") String userLogin
     ) {
-        String authorization = token.substring(7);
-        jwtHandler.validateToken(authorization);
-
         User user = userService.getUserByLogin(userLogin);
 
         if (user == null) {
@@ -114,12 +92,8 @@ public class InfoController {
                     schema = @Schema(implementation = InfoResponseDto.class))
     )
     public InfoResponseDto getUserById(
-            @RequestHeader(name = "Authorization") String token,
             @PathVariable @NotNull(message = "ID не может быть null") @Min(value = 1, message = "ID должен быть больше 0") Long userId
     ) {
-        String authorization = token.substring(7);
-        jwtHandler.validateToken(authorization);
-
         User user = userService.getUserById(userId);
 
         if (Objects.isNull(user)) {
@@ -138,13 +112,8 @@ public class InfoController {
                     array = @ArraySchema(schema = @Schema(implementation = InfoResponseDto.class)))
     )
     public List<InfoResponseDto> infoAllByUserType (
-            @RequestHeader(name = "Authorization") String token,
             @RequestParam(name = "userType") @NotNull(message = "Тип пользователя не может быть null") UserType userType
     ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-
         return this.userService.getAllUsersByUserType(userType)
                 .stream()
                 .map(userMapper::mapUserToResponseDto)
@@ -159,13 +128,7 @@ public class InfoController {
             content = @Content(mediaType = "application/json",
                     array = @ArraySchema(schema = @Schema(implementation = InfoResponseDto.class)))
     )
-    public List<InfoResponseDto> infoAll (
-            @RequestHeader(name = "Authorization") String token
-    ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-
+    public List<InfoResponseDto> infoAll () {
         if (userService.getAllUsers().isEmpty()) {
             throw new AgoraIllegalArgumentException("Список пользователей пуст.");
         }

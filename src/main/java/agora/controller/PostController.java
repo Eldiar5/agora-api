@@ -13,6 +13,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import agora.client.AgoraCommentsClient;
@@ -25,10 +26,8 @@ import agora.entity.post.Post;
 import agora.entity.user.User;
 import agora.entity.user.UserType;
 import agora.exceptions.PostNotFoundException;
-import agora.exceptions.AgoraIllegalArgumentException;
 import agora.exceptions.UserNotFoundException;
 import agora.mapper.v2.HttpPostMapper;
-import agora.security.JwtHandler;
 import agora.service.PostService;
 import agora.service.UserService;
 
@@ -50,7 +49,6 @@ public class PostController {
     private final PostService postService;
     private final UserService userService;
     private final HttpPostMapper postMapper;
-    private final JwtHandler jwtHandler;
     private final AgoraCommentsClient commentsClient;
     private final AgoraLikesClient likesClient;
 
@@ -59,16 +57,8 @@ public class PostController {
     @ResponseStatus(HttpStatus.CREATED)
     public PostResponseDto addPost(
             @RequestBody @Valid PostRequestDto postRequestDto,
-            @RequestHeader(name = "Authorization") String token
-
+            @AuthenticationPrincipal User user
     ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String author = jwtHandler.getUsernameFromToken(authorization);
-
-        User user = userService.getUserByLogin(author);
-
         Post post = new Post();
 
         post.setTopic(postRequestDto.getTopic());
@@ -94,25 +84,12 @@ public class PostController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @ApiErrorResponse403
     public void deletePost(
-            @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user,
             @PathVariable @NotNull(message = "ID поста не может быть пустым.") @Min(value = 1, message = "ID должен быть больше 0.") Long postId
     ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String authorLogin = jwtHandler.getUsernameFromToken(authorization);
-
-        this.validateField(authorLogin, "Некорректное имя");
-
-        User postAuthor = userService.getUserByLogin(authorLogin);
-
-        if (Objects.isNull(postAuthor)) {
-            throw new UserNotFoundException("Не удалось найти автора: " + authorLogin);
-        }
-
         Post postToDelete = postService.getPostById(postId);
 
-        if (!Objects.equals(postToDelete.getAuthor().getId(), postAuthor.getId())) {
+        if (!Objects.equals(postToDelete.getAuthor().getId(), user.getId())) {
             throw new SecurityException("Ошибка: вы не можете удалить чужую публикацию.");
         }
 
@@ -128,22 +105,10 @@ public class PostController {
                     array = @ArraySchema(schema = @Schema(implementation = PostResponseDto.class)))
     )
     public List<PostResponseDto> myPosts(
-            @RequestHeader(name = "Authorization") String token
+            @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user
     ) {
-        String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String login = jwtHandler.getUsernameFromToken(authorization);
-
-        this.validateField(login, "Некорректное имя");
-
-        User postAuthor = userService.getUserByLogin(login);
-
-        if (Objects.isNull(postAuthor)) {
-            throw new UserNotFoundException("Не удалось найти автора: " + login);
-        }
-
-        List<Post> posts = postService.getPostsByUser(postAuthor);
+        List<Post> posts = postService.getPostsByUser(user);
 
         if (Objects.isNull(posts)) {
             return Collections.emptyList();
@@ -183,19 +148,13 @@ public class PostController {
                     array = @ArraySchema(schema = @Schema(implementation = PostResponseDto.class)))
     )
     public List<PostResponseDto> getFeed(
-            @RequestHeader(name = "Authorization") String token
+            @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user
     ) {
         String authorization = token.substring(7);
-        jwtHandler.validateToken(authorization);
-
-        String login = jwtHandler.getUsernameFromToken(authorization);
-        User currentUser = userService.getUserByLogin(login);
-
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         // Используем новый метод сервиса
-        List<Post> feedPosts = postService.getFeedPosts(currentUser);
+        List<Post> feedPosts = postService.getFeedPosts(user);
 
         if (feedPosts == null || feedPosts.isEmpty()) {
             return Collections.emptyList();
@@ -209,7 +168,7 @@ public class PostController {
         Set<Long> likedPostIds = new HashSet<>();
         try {
             // Мы просто передаем токен дальше. Нам не нужно знать ID юзера здесь.
-            List<Long> likedIds = likesClient.getLikedPostIds(postIds, userId, authorization);
+            List<Long> likedIds = likesClient.getLikedPostIds(postIds, user.getId(), authorization);
             likedPostIds.addAll(likedIds);
         } catch (Exception e) {
             System.err.println("ОШИБКА при получении лайков: " + e.getMessage());
@@ -242,14 +201,10 @@ public class PostController {
                     array = @ArraySchema(schema = @Schema(implementation = PostResponseDto.class)))
     )
     public List<PostResponseDto> allPosts(
-            @RequestHeader(name = "Authorization") String token
+            @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user
     ) {
         String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         List<Post> allPosts = postService.getAllPosts();
 
@@ -274,7 +229,7 @@ public class PostController {
         Set<Long> likedPostIds = new HashSet<>();
         try {
             // Мы просто передаем токен дальше. Нам не нужно знать ID юзера здесь.
-            List<Long> likedIds = likesClient.getLikedPostIds(postIds, userId, authorization);
+            List<Long> likedIds = likesClient.getLikedPostIds(postIds, user.getId(), authorization);
             likedPostIds.addAll(likedIds);
         } catch (Exception e) {
             System.err.println("ОШИБКА при получении лайков: " + e.getMessage());
@@ -309,13 +264,10 @@ public class PostController {
     )
     public List<PostResponseDto> postsByTag(
             @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user,
             @RequestParam(name = "tag") @NotBlank(message = "Тег не может быть пустым.") String tag
     ) {
         String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         List<Post> postsByTag = postService.getPostsByTag(tag);
 
@@ -340,7 +292,7 @@ public class PostController {
         Set<Long> likedPostIds = new HashSet<>();
         try {
             // Мы просто передаем токен дальше. Нам не нужно знать ID юзера здесь.
-            List<Long> likedIds = likesClient.getLikedPostIds(postIds, userId, authorization);
+            List<Long> likedIds = likesClient.getLikedPostIds(postIds, user.getId(), authorization);
             likedPostIds.addAll(likedIds);
         } catch (Exception e) {
             System.err.println("ОШИБКА при получении лайков: " + e.getMessage());
@@ -375,13 +327,10 @@ public class PostController {
     )
     public List<PostResponseDto> postsByLogin(
             @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user,
             @RequestParam(name = "login") @NotBlank(message = "Логин не может быть пустым.") String login
     ) {
         String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         User author = userService.getUserByLogin(login);
 
@@ -412,7 +361,7 @@ public class PostController {
         Set<Long> likedPostIds = new HashSet<>();
         try {
             // Мы просто передаем токен дальше. Нам не нужно знать ID юзера здесь.
-            List<Long> likedIds = likesClient.getLikedPostIds(postIds, userId, authorization);
+            List<Long> likedIds = likesClient.getLikedPostIds(postIds, user.getId(), authorization);
             likedPostIds.addAll(likedIds);
         } catch (Exception e) {
             System.err.println("ОШИБКА при получении лайков: " + e.getMessage());
@@ -447,13 +396,10 @@ public class PostController {
     )
     public PostResponseDto getPostById(
             @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user,
             @PathVariable @NotNull(message = "Id поста не может быть пустым.") @Min(value = 1, message = "Id поста не может быть меньше 1.") Long postId
     ) {
         String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         Post postById = postService.getPostById(postId);
 
@@ -471,7 +417,7 @@ public class PostController {
         boolean isLiked = false;
 
         // Используем тот же метод, просто передаем список из одного элемента
-        List<Long> likedIds = likesClient.getLikedPostIds(List.of(postId), userId, authorization);
+        List<Long> likedIds = likesClient.getLikedPostIds(List.of(postId), user.getId(), authorization);
         if (!likedIds.isEmpty()) {
             isLiked = true;
         }
@@ -491,13 +437,10 @@ public class PostController {
     )
     public List<PostResponseDto> postsByUserType(
             @RequestHeader(name = "Authorization") String token,
+            @AuthenticationPrincipal User user,
             @RequestParam(name = "userType") @NotNull(message = "Некорректный тип пользователя.") UserType userType
     ) {
         String authorization = token.substring(7);
-
-        jwtHandler.validateToken(authorization);
-        String xUserId = jwtHandler.extractUserId(authorization);
-        Long userId = Long.valueOf(xUserId);
 
         List<Post> postsByUserType = postService.getPostsByUserType(userType);
 
@@ -521,7 +464,7 @@ public class PostController {
         Set<Long> likedPostIds = new HashSet<>();
         try {
             // Мы просто передаем токен дальше. Нам не нужно знать ID юзера здесь.
-            List<Long> likedIds = likesClient.getLikedPostIds(postIds, userId, authorization);
+            List<Long> likedIds = likesClient.getLikedPostIds(postIds, user.getId(), authorization);
             likedPostIds.addAll(likedIds);
         } catch (Exception e) {
             likedPostIds = Collections.emptySet();
@@ -541,12 +484,6 @@ public class PostController {
                     );
                 })
                 .toList();
-    }
-
-    private void validateField(String field, String errorMessage) {
-        if (Objects.isNull(field) || field.trim().isEmpty()) {
-            throw new AgoraIllegalArgumentException(errorMessage);
-        }
     }
 
 }

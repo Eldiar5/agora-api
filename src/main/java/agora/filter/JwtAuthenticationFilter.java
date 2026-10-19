@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -22,6 +21,9 @@ import java.io.IOException;
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    // Причина отказа в токене; её отдаёт клиенту JwtAuthenticationEntryPoint
+    public static final String AUTH_ERROR_ATTRIBUTE = "agora.auth.error";
 
     private final JwtHandler jwtHandler;
     private final UserDetailsService userDetailsService;
@@ -49,12 +51,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken authenticationToken = UsernamePasswordAuthenticationToken.authenticated(userDetails, null, userDetails.getAuthorities());
                 SecurityContextHolder.getContext().setAuthentication(authenticationToken);
             }
-
-            filterChain.doFilter(request, response);
         } catch (Exception ex) {
-            response.setContentType("application/json");
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            logger.error("Cannot set user authentication: " + ex.getMessage());
+            // Невалидный токен не обрывает запрос: permitAll-эндпоинты пройдут,
+            // защищённые получат 401 от JwtAuthenticationEntryPoint
+            SecurityContextHolder.clearContext();
+            request.setAttribute(AUTH_ERROR_ATTRIBUTE, ex.getMessage());
+            log.debug("JWT отклонён для {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
         }
+
+        filterChain.doFilter(request, response);
     }
 }
