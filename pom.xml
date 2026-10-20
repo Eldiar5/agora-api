@@ -116,6 +116,12 @@
             <version>2.8.9</version>
         </dependency>
 
+        <!-- Kafka -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Spring -->
         <!-- Bcrypt encoder -->
         <dependency>

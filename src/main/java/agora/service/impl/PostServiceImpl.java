@@ -2,8 +2,9 @@ package agora.service.impl;
 
 import agora.service.metrics.BusinessMetricsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import agora.dto.event.PostCreatedEvent;
@@ -27,16 +28,19 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PostServiceImpl implements PostService {
 
+    private static final String POSTS_TOPIC = "agora.posts";
+
     private final UserService userService;
     private final PostRepository postRepository;
     private final PostJpaMapper postMapper;
     private final TagRepository tagRepository;
-    private final RabbitTemplate rabbitTemplate;
+    private final KafkaTemplate<String, PostCreatedEvent> kafkaTemplate;
     private final SubscriptionRepository subscriptionRepository;
     private final BusinessMetricsService metricsService;
 
@@ -88,11 +92,35 @@ public class PostServiceImpl implements PostService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                rabbitTemplate.convertAndSend("internal.exchange", "post.created", event);
+                publishPostCreated(event);
             }
         });
 
         return postMapper.toDomain(savedPost);
+    }
+
+    // Вызывается после commit: пост уже сохранён, поэтому сбой Kafka не должен ронять HTTP-ответ.
+    // Событие при сбое теряется — надёжная доставка потребует Transactional Outbox.
+    private void publishPostCreated(PostCreatedEvent event) {
+        String key = event.getPostId().toString(); // ключ = postId → все события поста в одной партиции
+
+        try {
+            kafkaTemplate.send(POSTS_TOPIC, key, event)
+                    .whenComplete((result, ex) -> {
+                        if (ex != null) {
+                            // Асинхронный сбой: брокер недоступен, истёк delivery.timeout.ms и т.п.
+                            log.error("❌ [KAFKA] Не удалось отправить PostCreatedEvent (postId={}) в {}",
+                                    event.getPostId(), POSTS_TOPIC, ex);
+                            return;
+                        }
+                        var metadata = result.getRecordMetadata();
+                        log.info("📤 [KAFKA] PostCreatedEvent отправлен: postId={}, partition={}, offset={}",
+                                event.getPostId(), metadata.partition(), metadata.offset());
+                    });
+        } catch (Exception ex) {
+            // Синхронный сбой ещё до отправки: ошибка сериализации, таймаут получения метаданных топика
+            log.error("❌ [KAFKA] Ошибка при подготовке PostCreatedEvent (postId={})", event.getPostId(), ex);
+        }
     }
 
     @Override
