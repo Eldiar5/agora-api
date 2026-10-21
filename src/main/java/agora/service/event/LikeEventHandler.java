@@ -5,8 +5,8 @@ import agora.entity.post.PostJpaEntity;
 import agora.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.annotation.RabbitHandler;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.kafka.annotation.KafkaHandler;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import agora.dto.event.LikeCreatedEvent;
@@ -16,13 +16,13 @@ import agora.repository.PostRepository;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@RabbitListener(queues = "${rabbitmq.queue.api-likes:api.like.created.queue}")
+@KafkaListener(topics = "agora.likes", groupId = "agora-api")
 public class LikeEventHandler {
 
     private final PostRepository postRepository;
     private final NotificationService notificationService;
 
-    @RabbitHandler
+    @KafkaHandler
     @Transactional
     public void handleLikeCreated(LikeCreatedEvent event) {
         log.info("📥 [API] Получено событие лайка для поста ID: {}", event.postId());
@@ -56,7 +56,7 @@ public class LikeEventHandler {
         log.info("🔔 [API] Уведомление отправлено пользователю: {}", postAuthorLogin);
     }
 
-    @RabbitHandler
+    @KafkaHandler
     @Transactional
     public void handleLikeDeleted(LikeDeletedEvent event) {
         log.info("🗑️ [API] Лайк убран с поста ID: {}", event.postId());
