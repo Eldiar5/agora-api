@@ -16,24 +16,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
+// Лайки и посты переехали в Kafka (LikeEventHandler, PostServiceImpl).
+// Здесь остались только комментарии; STOMP relay для WebSocket настраивается в WebSocketConfig.
 public class RabbitMqConfig {
 
-    // Имя очереди ДЛЯ ЭТОГО сервиса (уникальное!)
-    @Value("${rabbitmq.queue.api-likes}")
-    private String queueName;
-
-    // Имя Exchange (ДОЛЖНО СОВПАДАТЬ с тем, что в agora-likes)
-    @Value("${rabbitmq.exchange.likes:likes.exchange}")
-    private String exchangeName;
-
-    // Routing Key (ДОЛЖЕН СОВПАДАТЬ с тем, что шлет agora-likes)
-    @Value("${rabbitmq.routing.key.like-created:like.created.key}")
-    private String createRoutingKey;
-
-    @Value("${rabbitmq.routing.key.like-deleted:like.deleted.key}")
-    private String deleteRoutingKey;
-
-    // === НОВЫЕ НАСТРОЙКИ ДЛЯ КОММЕНТАРИЕВ ===
+    // === НАСТРОЙКИ ДЛЯ КОММЕНТАРИЕВ ===
     @Value("${rabbitmq.queue.api-comments:api.comment.created.queue}") // Имя очереди
     private String commentsQueueName;
 
@@ -42,28 +29,6 @@ public class RabbitMqConfig {
 
     @Value("${rabbitmq.routing.key.comment-created:comment.created.key}") // Ключ (как в agora-comments)
     private String commentCreatedKey;
-
-    // ---- бины для лайков ---- //
-
-    // 1. Объявляем очередь
-    @Bean
-    public Queue apiLikesQueue() {
-        return new Queue(queueName, true);
-    }
-
-    // 2. Объявляем Exchange (он уже есть, но объявить не вредно)
-    @Bean
-    public TopicExchange likesExchange() {
-        return new TopicExchange(exchangeName);
-    }
-
-    // 3. Связываем очередь с Exchange
-    @Bean
-    public Binding bindingLikeCreated(Queue apiLikesQueue, TopicExchange likesExchange) {
-        return BindingBuilder.bind(apiLikesQueue)
-                .to(likesExchange)
-                .with(createRoutingKey);
-    }
 
     // ---- бины для комментариев ---- //
 
@@ -87,18 +52,6 @@ public class RabbitMqConfig {
     }
 
     @Bean
-    public Binding bindingLikeDeleted(Queue apiLikesQueue, TopicExchange likesExchange) {
-        return BindingBuilder.bind(apiLikesQueue)
-                .to(likesExchange)
-                .with(deleteRoutingKey);
-    }
-
-    @Bean
-    public TopicExchange internalExchange() {
-        return new TopicExchange("internal.exchange");
-    }
-
-    @Bean
     public Jackson2JsonMessageConverter messageConverter() {
         Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
         DefaultJackson2JavaTypeMapper typeMapper = new DefaultJackson2JavaTypeMapper();
@@ -107,12 +60,7 @@ public class RabbitMqConfig {
         // 🔥 САМОЕ ВАЖНОЕ: Маппинг имен классов
         Map<String, Class<?>> idClassMapping = new HashMap<>();
 
-        // Ключ - это то, что приходит в заголовке от agora-likes (смотри в логи!)
-        // Значение - это твой класс в agora-api
-        idClassMapping.put("org.example.agoralikes.dto.event.LikeCreatedEvent", agora.dto.event.LikeCreatedEvent.class);
-        idClassMapping.put("org.example.agoralikes.dto.event.LikeDeletedEvent", agora.dto.event.LikeDeletedEvent.class);
-
-        // Добавляем маппинг для комментариев
+        // Маппинг для комментариев
         // Ключ: полное имя класса-отправителя (из agora-comments)
         // Значение: класс-получатель (который создадим ниже)
         idClassMapping.put("org.example.agoracomments.dto.event.CommentCreatedEvent", agora.dto.event.CommentCreatedEvent.class);
